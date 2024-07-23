@@ -5,52 +5,73 @@ using UnityEngine.InputSystem;
 
 public class move_script : MonoBehaviour
 {
-    public Transform cam; // Ссылка на объект камеры, от которой будет рассчитываться направление движения
-    public float speed; // Скорость движения персонажа
-    public float rotationSpeed; // Скорость вращения персонажа
+    // Ссылка на камеру, которая будет использоваться для определения направления движения.
+    public Transform cam;
 
-    private Animator anim; // Ссылка на компонент анимации персонажа
-    private Vector3 movement; // Вектор движения персонажа
+    // Скорости движения и вращения при ходьбе
+    public float walkSpeed;
+    public float walkRotationSpeed;
+
+    // Скорости движения и вращения при беге
+    public float runSpeed;
+    public float runRotationSpeed;
+
+    // Ссылка на аниматор персонажа.
+    private Animator anim;
+    // Вектор движения персонажа.
+    private Vector3 movement;
 
     private void Start()
     {
-        anim = GetComponent<Animator>(); // Получаем ссылку на компонент анимации персонажа
+        anim = GetComponent<Animator>();
     }
 
     void Update()
     {
-        // Получаем направление движения от камеры
-        Vector3 forward = cam.forward; // Получаем вектор "вперед" от камеры
-        Vector3 right = cam.right; // Получаем вектор "вправо" от камеры
+        // Получаем направление движения от камеры.
+        Vector3 forward = cam.forward;
+        Vector3 right = cam.right;
 
-        // Очищаем вертикальную составляющую
-        forward.y = 0; // Обнуляем вертикальную составляющую вектора "вперед"
-        right.y = 0; // Обнуляем вертикальную составляющую вектора "вправо"
+        // Очищаем вертикальную составляющую направления, 
+        // чтобы персонаж не двигался вверх или вниз.
+        forward.y = 0;
+        right.y = 0;
 
-        // Нормализуем векторы
-        forward.Normalize(); // Нормализуем вектор "вперед"
-        right.Normalize(); // Нормализуем вектор "вправо"
+        // Нормализуем векторы направления, чтобы они имели длину 1.
+        forward.Normalize();
+        right.Normalize();
 
-        // Вычисляем вектор движения
+        // Вычисляем вектор движения на основе ввода пользователя.
+        // Input.GetAxis("Vertical") и Input.GetAxis("Horizontal") возвращают значения от -1 до 1, которые 
+        //  определяют направление движения по вертикали и горизонтали.
         movement = (forward * Input.GetAxis("Vertical") + right * Input.GetAxis("Horizontal")).normalized;
-        // Получаем значения осей управления (вперед/назад, влево/вправо) и умножаем их на соответствующие векторы, 
-        // затем суммируем и нормализуем полученный вектор
 
-        // Движение и вращение
-        if (movement != Vector3.zero) // Проверяем, движется ли персонаж
+        // Определяем, бежит ли персонаж.
+        bool isRunning = Input.GetKey(KeyCode.LeftShift);
+
+        // Движение и вращение персонажа.
+        if (movement != Vector3.zero)
         {
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * rotationSpeed);
-            // Поворачиваем персонажа в направлении движения, используя сферическую интерполяцию (Slerp) 
-            // для плавного вращения
+            // Выбираем скорость и скорость вращения в зависимости от того, 
+            // бежит ли персонаж.
+            float currentSpeed = isRunning ? runSpeed : walkSpeed;
+            float currentRotationSpeed = isRunning ? runRotationSpeed : walkRotationSpeed;
 
-            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, speed * Time.deltaTime);
-            // Перемещаем персонажа в направлении движения со скоростью speed 
+            // Поворачиваем персонажа в направлении движения.
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed);
 
-            anim.SetBool("isWalking", true); // Анимируем ходьбу персонажа
+            // Перемещаем персонажа в направлении движения.
+            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime);
+
+            // Анимируем персонажа.
+            anim.SetBool("isWalking", true);
+            anim.SetBool("isRunning", isRunning);
         }
         else
         {
-            anim.SetBool("isWalking", false); // Остановить анимацию ходьбы, если персонаж не движется
+            // Если персонаж не двигается, то устанавливаем анимацию в состояние покоя.
+            anim.SetBool("isWalking", false);
+            anim.SetBool("isRunning", false);
         }
     }
 }
