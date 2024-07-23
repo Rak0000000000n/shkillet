@@ -1,0 +1,54 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class cam_move_script : MonoBehaviour
+{
+    public GameObject player; // Ссылка на объект игрока, за которым будет следовать камера
+    public float sensitivity = 2f; // Чувствительность вращения камеры
+
+    private Vector2 mouseDelta; // Изменение позиции мыши с момента последнего кадра
+    private Vector3 offcet; // Смещение камеры относительно игрока
+
+    void Start()
+    {
+        offcet = transform.position - player.transform.position; // Запоминаем начальное смещение камеры относительно игрока
+    }
+
+    void LateUpdate()
+    {
+        // Получаем изменение позиции мыши с момента последнего кадра
+        mouseDelta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+
+        // Вращаем объект вокруг своей вертикальной оси (поворот влево/вправо)
+        transform.Rotate(Vector3.up, mouseDelta.x * sensitivity * Time.deltaTime);
+
+        // Вращаем объект вокруг своей горизонтальной оси (поворот вверх/вниз)
+        transform.Rotate(Vector3.right, -mouseDelta.y * sensitivity * Time.deltaTime);
+
+        // Ограничиваем вращение по вертикали
+        // В этом блоке кода мы ограничиваем вертикальное вращение камеры, 
+        // чтобы она не могла смотреть слишком высоко или слишком низко.
+        if (transform.eulerAngles.x >= 0 && transform.eulerAngles.x <= 40)
+        {
+            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 0f, 40f), transform.eulerAngles.y, 0);
+        }
+        else if (transform.eulerAngles.x >= 320 && transform.eulerAngles.x <= 360)
+        {
+            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 320f, 360f), transform.eulerAngles.y, 0);
+        }
+        else
+        {
+            if (transform.eulerAngles.x - 40 < 100)
+            {
+                transform.eulerAngles = new Vector3(40f, transform.eulerAngles.y, 0);
+            }
+            else
+            {
+                transform.eulerAngles = new Vector3(320, transform.eulerAngles.y, 0);
+            }
+        }
+
+        transform.position = player.transform.position + offcet; // Перемещаем камеру так, чтобы она всегда находилась на заданном смещении относительно игрока
+    }
+}
