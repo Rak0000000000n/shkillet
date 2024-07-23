@@ -13,17 +13,51 @@ public class move_script : MonoBehaviour
     public float walkRotationSpeed;
 
     // Скорости движения и вращения при беге
+    private bool isRunning; // Флаг, указывающий, бежит ли персонаж
     public float runSpeed;
     public float runRotationSpeed;
+
+    // Скорости движения и вращения при сидении
+    private bool isSiting; // Флаг, указывающий, сидит ли персонаж
+    public float sitSpeed;
+    public float sitRotationSpeed;
+    public float sitNrunSpeed; // Скорость при сидении и беге
+    public float sitNrunRotationSpeed; // Скорость вращения при сидении и беге
 
     // Ссылка на аниматор персонажа.
     private Animator anim;
     // Вектор движения персонажа.
     private Vector3 movement;
 
+    // Переменные для плавного изменения скорости
+    private float currentSpeed; // Текущая скорость движения
+    private float currentRotationSpeed; // Текущая скорость вращения
+    private float speedChangeRate = 8f; // Скорость изменения скорости (чем больше значение, тем быстрее изменяется скорость)
+
+    // Переменные для коллайдера
+    private CapsuleCollider capsuleCollider;
+    // Переменные для плавной анимации высоты
+    private float currentHeight;
+    private float targetHeight;
+    private float smoothTime = 0.55f; // Время плавного перехода (в секундах)
+    private float velocity = 0f; // Переменная для скорости изменения высоты
+    private Vector3 colliderOffset; // Смещение коллайдера
+
+    // Справочный словарь для хранения высоты персонажа в каждой анимации
+    private Dictionary<string, float> animationHeights = new Dictionary<string, float>()
+    {
+        // Заполните этот словарь высотами для каждой анимации
+        {"not Sit", 1.85f},
+        {"Sit", 1.48f},
+    };
+
     private void Start()
     {
-        anim = GetComponent<Animator>();
+        anim = GetComponent<Animator>(); // Получаем ссылку на компонент аниматора
+        capsuleCollider = GetComponent<CapsuleCollider>();
+        currentHeight = capsuleCollider.height; // Инициализируем текущую высоту
+        currentSpeed = walkSpeed; // Инициализируем начальную скорость как скорость ходьбы
+        currentRotationSpeed = walkRotationSpeed; // Инициализируем начальную скорость вращения как скорость ходьбы
     }
 
     void Update()
@@ -47,31 +81,71 @@ public class move_script : MonoBehaviour
         movement = (forward * Input.GetAxis("Vertical") + right * Input.GetAxis("Horizontal")).normalized;
 
         // Определяем, бежит ли персонаж.
-        bool isRunning = Input.GetKey(KeyCode.LeftShift);
+        isRunning = Input.GetKey(KeyCode.LeftShift);
+
+        // Определяем, сидит ли персонаж.
+        if (Input.GetKeyDown(KeyCode.C)) { isSiting = !isSiting; } // Переключаем состояние сидения при нажатии на клавишу C
+
+        // Плавно изменяем скорость и скорость вращения
+        float targetSpeed = walkSpeed; // Начальная скорость - скорость ходьбы
+        float targetRotationSpeed = walkRotationSpeed; // Начальная скорость вращения - скорость ходьбы
+
+        targetHeight = animationHeights["not Sit"];
+        colliderOffset = new Vector3(0f, currentHeight / 2f);
+
+        if (isRunning && !isSiting) 
+        {
+            targetSpeed = runSpeed; // Устанавливаем целевую скорость как скорость бега
+            targetRotationSpeed = runRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при беге
+        }
+        else if (!isRunning && isSiting)
+        {
+            targetSpeed = sitSpeed; // Устанавливаем целевую скорость как скорость сидения
+            targetRotationSpeed = sitRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+            anim.SetFloat("SitSpeed", 0.5f);
+
+            targetHeight = animationHeights["Sit"];
+            // Вычисляем смещение коллайдера
+            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
+        }
+        else if (isRunning && isSiting)
+        {
+            targetSpeed = sitNrunSpeed; // Устанавливаем целевую скорость как скорость сидения
+            targetRotationSpeed = sitNrunRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+            anim.SetFloat("SitSpeed", 1f);
+
+            targetHeight = animationHeights["Sit"];
+            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
+        }
+
+        // Плавно изменяем высоту коллайдера
+        currentHeight = Mathf.SmoothDamp(currentHeight, targetHeight, ref velocity, smoothTime);
+        capsuleCollider.height = currentHeight;
+        capsuleCollider.center = new Vector3(colliderOffset.x, currentHeight / 2f, colliderOffset.z);
+
+        // Используем Lerp для плавного изменения скорости и скорости вращения
+        currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости к целевой скорости
+        currentRotationSpeed = Mathf.Lerp(currentRotationSpeed, targetRotationSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости вращения к целевой скорости вращения
 
         // Движение и вращение персонажа.
-        if (movement != Vector3.zero)
+        if (movement != Vector3.zero) // Если персонаж движется
         {
-            // Выбираем скорость и скорость вращения в зависимости от того, 
-            // бежит ли персонаж.
-            float currentSpeed = isRunning ? runSpeed : walkSpeed;
-            float currentRotationSpeed = isRunning ? runRotationSpeed : walkRotationSpeed;
-
             // Поворачиваем персонажа в направлении движения.
-            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed);
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed); // Вращаем персонажа с текущей скоростью вращения
 
             // Перемещаем персонажа в направлении движения.
-            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime);
+            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime); // Перемещаем персонажа с текущей скоростью
 
             // Анимируем персонажа.
-            anim.SetBool("isWalking", true);
-            anim.SetBool("isRunning", isRunning);
+            anim.SetBool("isWalking", true); // Анимируем ходьбу
+            anim.SetBool("isRunning", isRunning); // Анимируем бег
         }
-        else
+        else // Если персонаж не движется
         {
             // Если персонаж не двигается, то устанавливаем анимацию в состояние покоя.
-            anim.SetBool("isWalking", false);
-            anim.SetBool("isRunning", false);
+            anim.SetBool("isWalking", false); // Останавливаем анимацию ходьбы
+            anim.SetBool("isRunning", false); // Останавливаем анимацию бега
         }
+        anim.SetBool("isSiting", isSiting); // Анимируем сидение
     }
 }
