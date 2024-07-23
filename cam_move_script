@@ -1,54 +1,77 @@
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class cam_move_script : MonoBehaviour
+public class move_script : MonoBehaviour
 {
-    public GameObject player; // Ссылка на объект игрока, за которым будет следовать камера
-    public float sensitivity = 2f; // Чувствительность вращения камеры
+    // Ссылка на камеру, которая будет использоваться для определения направления движения.
+    public Transform cam;
 
-    private Vector2 mouseDelta; // Изменение позиции мыши с момента последнего кадра
-    private Vector3 offcet; // Смещение камеры относительно игрока
+    // Скорости движения и вращения при ходьбе
+    public float walkSpeed;
+    public float walkRotationSpeed;
 
-    void Start()
+    // Скорости движения и вращения при беге
+    public float runSpeed;
+    public float runRotationSpeed;
+
+    // Ссылка на аниматор персонажа.
+    private Animator anim;
+    // Вектор движения персонажа.
+    private Vector3 movement;
+
+    private void Start()
     {
-        offcet = transform.position - player.transform.position; // Запоминаем начальное смещение камеры относительно игрока
+        anim = GetComponent<Animator>();
     }
 
-    void LateUpdate()
+    void Update()
     {
-        // Получаем изменение позиции мыши с момента последнего кадра
-        mouseDelta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+        // Получаем направление движения от камеры.
+        Vector3 forward = cam.forward;
+        Vector3 right = cam.right;
 
-        // Вращаем объект вокруг своей вертикальной оси (поворот влево/вправо)
-        transform.Rotate(Vector3.up, mouseDelta.x * sensitivity * Time.deltaTime);
+        // Очищаем вертикальную составляющую направления, 
+        // чтобы персонаж не двигался вверх или вниз.
+        forward.y = 0;
+        right.y = 0;
 
-        // Вращаем объект вокруг своей горизонтальной оси (поворот вверх/вниз)
-        transform.Rotate(Vector3.right, -mouseDelta.y * sensitivity * Time.deltaTime);
+        // Нормализуем векторы направления, чтобы они имели длину 1.
+        forward.Normalize();
+        right.Normalize();
 
-        // Ограничиваем вращение по вертикали
-        // В этом блоке кода мы ограничиваем вертикальное вращение камеры, 
-        // чтобы она не могла смотреть слишком высоко или слишком низко.
-        if (transform.eulerAngles.x >= 0 && transform.eulerAngles.x <= 40)
+        // Вычисляем вектор движения на основе ввода пользователя.
+        // Input.GetAxis("Vertical") и Input.GetAxis("Horizontal") возвращают значения от -1 до 1, которые 
+        //  определяют направление движения по вертикали и горизонтали.
+        movement = (forward * Input.GetAxis("Vertical") + right * Input.GetAxis("Horizontal")).normalized;
+
+        // Определяем, бежит ли персонаж.
+        bool isRunning = Input.GetKey(KeyCode.LeftShift);
+
+        // Движение и вращение персонажа.
+        if (movement != Vector3.zero)
         {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 0f, 40f), transform.eulerAngles.y, 0);
-        }
-        else if (transform.eulerAngles.x >= 320 && transform.eulerAngles.x <= 360)
-        {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 320f, 360f), transform.eulerAngles.y, 0);
+            // Выбираем скорость и скорость вращения в зависимости от того, 
+            // бежит ли персонаж.
+            float currentSpeed = isRunning ? runSpeed : walkSpeed;
+            float currentRotationSpeed = isRunning ? runRotationSpeed : walkRotationSpeed;
+
+            // Поворачиваем персонажа в направлении движения.
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed);
+
+            // Перемещаем персонажа в направлении движения.
+            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime);
+
+            // Анимируем персонажа.
+            anim.SetBool("isWalking", true);
+            anim.SetBool("isRunning", isRunning);
         }
         else
         {
-            if (transform.eulerAngles.x - 40 < 100)
-            {
-                transform.eulerAngles = new Vector3(40f, transform.eulerAngles.y, 0);
-            }
-            else
-            {
-                transform.eulerAngles = new Vector3(320, transform.eulerAngles.y, 0);
-            }
+            // Если персонаж не двигается, то устанавливаем анимацию в состояние покоя.
+            anim.SetBool("isWalking", false);
+            anim.SetBool("isRunning", false);
         }
-
-        transform.position = player.transform.position + offcet; // Перемещаем камеру так, чтобы она всегда находилась на заданном смещении относительно игрока
     }
 }
