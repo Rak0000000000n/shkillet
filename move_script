@@ -5,44 +5,46 @@ using UnityEngine.InputSystem;
 
 public class move_script : MonoBehaviour
 {
-    // Ссылка на камеру, которая будет использоваться для определения направления движения.
+    [Header("Настройки камеры")]
     public Transform cam;
 
-    // Скорости движения и вращения при ходьбе
+    [Space(12)]
+    [Header("Скорости движения")]
     public float walkSpeed;
-    public float walkRotationSpeed;
-
-    // Скорости движения и вращения при беге
-    private bool isRunning; // Флаг, указывающий, бежит ли персонаж
     public float runSpeed;
-    public float runRotationSpeed;
-
-    // Скорости движения и вращения при сидении
-    public bool isSiting; // Флаг, указывающий, сидит ли персонаж
     public float sitSpeed;
+    public float sitNrunSpeed;
+
+    [Space(12)]
+    [Header("Скорости вращения")]
+    public float walkRotationSpeed;
+    public float runRotationSpeed;
     public float sitRotationSpeed;
-    public float sitNrunSpeed; // Скорость при сидении и беге
-    public float sitNrunRotationSpeed; // Скорость вращения при сидении и беге
+    public float sitNrunRotationSpeed;
 
-    // Ссылка на аниматор персонажа.
+    [Space(12)]
+    [Header("Сидение")]
+    public bool isSiting; // Флаг, указывающий, сидит ли персонаж
+
+    [Space(12)]
+    [Header("Анимация")]
     private Animator anim;
-    // Вектор движения персонажа.
-    private Vector3 movement;
 
-    // Переменные для плавного изменения скорости
-    private float currentSpeed; // Текущая скорость движения
-    private float currentRotationSpeed; // Текущая скорость вращения
-    private float speedChangeRate = 8f; // Скорость изменения скорости (чем больше значение, тем быстрее изменяется скорость)
-
-    // Переменные для коллайдера
+    [Space(12)]
+    [Header("Изменение высоты")]
     private CapsuleCollider capsuleCollider;
-    // Переменные для плавной анимации высоты
     private float currentHeight;
     private float targetHeight;
     private float smoothTime = 0.55f; // Время плавного перехода (в секундах)
     private float velocity = 0f; // Переменная для скорости изменения высоты
     private Vector3 colliderOffset; // Смещение коллайдера
 
+    [Space(12)]
+    [Header("Дополнительные настройки")]
+    private float speedChangeRate = 8f; // Скорость изменения скорости (чем больше значение, тем быстрее изменяется скорость)
+
+    [Space(12)]
+    [Header("Словарь высот")]
     // Справочный словарь для хранения высоты персонажа в каждой анимации
     private Dictionary<string, float> animationHeights = new Dictionary<string, float>()
     {
@@ -50,6 +52,12 @@ public class move_script : MonoBehaviour
         {"not Sit", 1.85f},
         {"Sit", 1.48f},
     };
+
+    // Переменные для движения
+    private Vector3 movement;
+    private bool isRunning;
+    private float currentSpeed; // Текущая скорость движения
+    private float currentRotationSpeed; // Текущая скорость вращения
 
     private void Start()
     {
@@ -61,6 +69,16 @@ public class move_script : MonoBehaviour
     }
 
     void Update()
+    {
+        HandleInput();
+        UpdateMovement();
+        UpdateRotation();
+        UpdateAnimation();
+        UpdateColliderHeight();
+    }
+
+    // Обработка ввода
+    private void HandleInput()
     {
         // Получаем направление движения от камеры.
         Vector3 forward = cam.forward;
@@ -76,8 +94,6 @@ public class move_script : MonoBehaviour
         right.Normalize();
 
         // Вычисляем вектор движения на основе ввода пользователя.
-        // Input.GetAxis("Vertical") и Input.GetAxis("Horizontal") возвращают значения от -1 до 1, которые 
-        //  определяют направление движения по вертикали и горизонтали.
         movement = (forward * Input.GetAxis("Vertical") + right * Input.GetAxis("Horizontal")).normalized;
 
         // Определяем, бежит ли персонаж.
@@ -85,7 +101,11 @@ public class move_script : MonoBehaviour
 
         // Определяем, сидит ли персонаж.
         if (Input.GetKeyDown(KeyCode.C)) { isSiting = !isSiting; } // Переключаем состояние сидения при нажатии на клавишу C
+    }
 
+    // Обновление движения
+    private void UpdateMovement()
+    {
         // Плавно изменяем скорость и скорость вращения
         float targetSpeed = walkSpeed; // Начальная скорость - скорость ходьбы
         float targetRotationSpeed = walkRotationSpeed; // Начальная скорость вращения - скорость ходьбы
@@ -93,7 +113,7 @@ public class move_script : MonoBehaviour
         targetHeight = animationHeights["not Sit"];
         colliderOffset = new Vector3(0f, currentHeight / 2f);
 
-        if (isRunning && !isSiting) 
+        if (isRunning && !isSiting)
         {
             targetSpeed = runSpeed; // Устанавливаем целевую скорость как скорость бега
             targetRotationSpeed = runRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при беге
@@ -105,8 +125,7 @@ public class move_script : MonoBehaviour
             anim.SetFloat("SitSpeed", 0.5f);
 
             targetHeight = animationHeights["Sit"];
-            // Вычисляем смещение коллайдера
-            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
+            colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
         }
         else if (isRunning && isSiting)
         {
@@ -115,24 +134,29 @@ public class move_script : MonoBehaviour
             anim.SetFloat("SitSpeed", 0.75f);
 
             targetHeight = animationHeights["Sit"];
-            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
+            colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
         }
-
-        // Плавно изменяем высоту коллайдера
-        currentHeight = Mathf.SmoothDamp(currentHeight, targetHeight, ref velocity, smoothTime);
-        capsuleCollider.height = currentHeight;
-        capsuleCollider.center = new Vector3(colliderOffset.x, currentHeight / 2f, colliderOffset.z);
 
         // Используем Lerp для плавного изменения скорости и скорости вращения
         currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости к целевой скорости
         currentRotationSpeed = Mathf.Lerp(currentRotationSpeed, targetRotationSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости вращения к целевой скорости вращения
+    }
 
-        // Движение и вращение персонажа.
+    // Обновление поворота
+    private void UpdateRotation()
+    {
         if (movement != Vector3.zero) // Если персонаж движется
         {
             // Поворачиваем персонажа в направлении движения.
             transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed); // Вращаем персонажа с текущей скоростью вращения
+        }
+    }
 
+    // Обновление анимации
+    private void UpdateAnimation()
+    {
+        if (movement != Vector3.zero) // Если персонаж движется
+        {
             // Перемещаем персонажа в направлении движения.
             transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime); // Перемещаем персонажа с текущей скоростью
 
@@ -147,5 +171,14 @@ public class move_script : MonoBehaviour
             anim.SetBool("isRunning", false); // Останавливаем анимацию бега
         }
         anim.SetBool("isSiting", isSiting); // Анимируем сидение
+    }
+
+    // Обновление высоты коллайдера
+    private void UpdateColliderHeight()
+    {
+        // Плавно изменяем высоту коллайдера
+        currentHeight = Mathf.SmoothDamp(currentHeight, targetHeight, ref velocity, smoothTime);
+        capsuleCollider.height = currentHeight;
+        capsuleCollider.center = new Vector3(colliderOffset.x, currentHeight / 2f, colliderOffset.z);
     }
 }
