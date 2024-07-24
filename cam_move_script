@@ -1,10 +1,12 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 
 public class cam_script : MonoBehaviour
 {
-    // Ссылка на объект игрока, за которым будет следовать камера.
+    public move_script MS;
+
     public GameObject player;
     // Чувствительность вращения камеры. 
     // Большее значение означает более быстрое вращение.
@@ -13,11 +15,30 @@ public class cam_script : MonoBehaviour
     // Переменная для хранения изменения позиции мыши с предыдущего кадра.
     private Vector2 mouseDelta;
     // Вектор смещения камеры относительно игрока.
-    private Vector3 offcet;
+    private Vector3 offcet1;
+    private Vector3 offcet2;
+
+    public GameObject cam_pos;
+    // Значение ползунка, которое будет влиять на offcet.
+    [Range(0.6f, 2.5f)] // Добавляем атрибут Range
+    public float sliderValue;
+
+    public float sittingYOffset = 0.75f;
+    public float standingYOffset = 1.5f;
+    private Vector3 targetPosition;
+    private Vector3 velocity = Vector3.zero;
+    public float smoothTime = 0.5f; // Скорость плавного перемещения
+
+    // Массив для хранения объектов, ставших прозрачными
+    GameObject[] transparentObjects = new GameObject[10]; // Начальная емкость массива
+    int transparentObjectsCount = 0; // Количество объектов в массиве
+
 
     void Start()
     {
-        offcet = transform.position - player.transform.position;
+        offcet1 = cam_pos.transform.position - transform.position;
+        offcet2 = transform.position - player.transform.position;
+        sliderValue = 2.3f;
     }
 
     void LateUpdate()
@@ -50,7 +71,157 @@ public class cam_script : MonoBehaviour
                 transform.eulerAngles = new Vector3(300, transform.eulerAngles.y, 0);
             }
         }
+
+        // Изменяем offcet с помощью значения ползунка
+        Vector3 direction = (cam_pos.transform.position - transform.position).normalized; // Получаем направление
+        offcet1 = direction * sliderValue; // Умножаем направление на значение ползунка
+
         // Перемещаем камеру в положение, которое находится на расстоянии offcet от игрока.
-        transform.position = player.transform.position + offcet;
+        cam_pos.transform.position = transform.position + offcet1;
+        // Получаем целевую позицию в зависимости от состояния сидения
+        targetPosition = player.transform.position + offcet2;
+        targetPosition.y = MS.isSiting ? sittingYOffset : standingYOffset;
+
+        // Плавное перемещение к целевой позиции
+        transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, smoothTime);
+
+        // Отрисовываем лучи
+        Vector3 TP = transform.position; // позиция cam_point
+        Vector3 cam_posTP = cam_pos.transform.position; // позиция cam_pos
+
+        // Желтый луч: cam_point -> cam_pos (длина = sliderValue)
+        Debug.DrawLine(TP, cam_posTP, Color.yellow);
+        // Красный луч: cam_pos -> направление от cam_point (длина = initialDistance - sliderValue)
+        Debug.DrawLine(cam_posTP, cam_posTP + direction * (2.3f - sliderValue), Color.red);
+
+        RaycastHit hit;
+
+        // Целевое значение sliderValue
+        float targetSliderValue = sliderValue;
+
+        // Сглаживание перехода между объектами
+        float smoothTransitionSpeed = 12.0f; // Скорость сглаживания
+
+        // Первый луч (желтый): 
+        if (Physics.Raycast(TP, direction, out hit, sliderValue) && hit.collider.gameObject.tag == "obstacle")
+        {
+            // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
+            targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, Vector3.Distance(TP, hit.point)), Time.fixedDeltaTime * smoothTransitionSpeed);
+
+            // Рекурсивно делаем прозрачными все объекты с тегом "obstacle" внутри найденного объекта
+            MakeObstacleTransparentRecursive(hit.collider.gameObject);
+
+            // Добавляем объект в массив transparentObjects, если его там еще нет
+            if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, hit.collider.gameObject))
+            {
+                transparentObjects[transparentObjectsCount] = hit.collider.gameObject;
+                transparentObjectsCount++;
+            }
+        }
+        else
+        {
+            // Если желтый луч ни с чем не пересекается, проверяем красный луч
+            if (Physics.Raycast(cam_posTP, -direction, out hit, 2.3f - sliderValue) && hit.collider.gameObject.tag == "obstacle")
+            {
+                // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
+                targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, 2.3f - Vector3.Distance(cam_posTP, hit.point)), Time.deltaTime * smoothTransitionSpeed);
+
+                // Рекурсивно делаем прозрачными все объекты с тегом "obstacle" внутри найденного объекта
+                MakeObstacleTransparentRecursive(hit.collider.gameObject);
+
+                // Добавляем объект в массив transparentObjects, если его там еще нет
+                if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, hit.collider.gameObject))
+                {
+                    transparentObjects[transparentObjectsCount] = hit.collider.gameObject;
+                    transparentObjectsCount++;
+                }
+            }
+            else
+            {
+                // Если ни один луч ни с чем не пересекается, плавно увеличиваем targetSliderValue до максимального значения
+                targetSliderValue = Mathf.Lerp(targetSliderValue, 2.3f, Time.deltaTime * smoothTransitionSpeed);
+
+                // Возвращаем непрозрачность всем объектам в массиве
+                for (int i = 0; i < transparentObjectsCount; i++)
+                {
+                    if (transparentObjects[i] != null)
+                    {
+                        MakeObstacleOpaque(transparentObjects[i]);
+                    }
+                }
+
+                // Очищаем массив
+                transparentObjectsCount = 0;
+            }
+        }
+
+        // Плавно перемещаем sliderValue к целевому значению
+        sliderValue = Mathf.Lerp(sliderValue, targetSliderValue, Time.fixedDeltaTime * 5.0f);
+
+        // Применяем полученное значение sliderValue к позиции cam_pos
+        cam_posTP = TP + direction * sliderValue;
+    }
+
+    // Функция для проверки, есть ли объект в массиве
+    private bool ArrayContainsObject(GameObject[] array, int count, GameObject target)
+    {
+        for (int i = 0; i < count; i++)
+        {
+            if (array[i] == target)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // Функция для изменения прозрачности препятствий
+    private void MakeObstacleTransparent(GameObject obstacle)
+    {
+        // Получаем Renderer препятствия
+        Renderer obstacleRenderer = obstacle.GetComponent<Renderer>();
+        if (obstacleRenderer != null)
+        {
+            // Устанавливаем прозрачность
+            Color color = obstacleRenderer.material.color;
+            color.a = 0.0f; // Значение прозрачности (0 - полностью прозрачный, 1 - полностью непрозрачный)
+            obstacleRenderer.material.color = color;
+        }
+    }
+
+    // Функция для возвращения препятствий в непрозрачное состояние
+    private void MakeObstacleOpaque(GameObject obstacle)
+    {
+        // Получаем Renderer препятствия
+        Renderer obstacleRenderer = obstacle.GetComponent<Renderer>();
+        if (obstacleRenderer != null)
+        {
+            // Устанавливаем непрозрачность
+            Color color = obstacleRenderer.material.color;
+            color.a = 1.0f; // Значение прозрачности (0 - полностью прозрачный, 1 - полностью непрозрачный)
+            obstacleRenderer.material.color = color;
+        }
+    }
+
+    // Рекурсивная функция для создания прозрачности объектов с тегом "obstacle"
+    void MakeObstacleTransparentRecursive(GameObject obj)
+    {
+        MakeObstacleTransparent(obj);
+
+        // Добавляем объект в массив transparentObjects, если его там еще нет
+        if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, obj))
+        {
+            transparentObjects[transparentObjectsCount] = obj;
+            transparentObjectsCount++;
+        }
+
+        // Проверяем всех дочерних объектов
+        foreach (Transform child in obj.transform)
+        {
+            if (child.gameObject.tag == "obstacle")
+            {
+                MakeObstacleTransparentRecursive(child.gameObject);
+            }
+        }
     }
 }
