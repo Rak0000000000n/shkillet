@@ -1,227 +1,151 @@
-using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.InputSystem;
 
-public class cam_script : MonoBehaviour
+public class move_script : MonoBehaviour
 {
-    public move_script MS;
+    // Ссылка на камеру, которая будет использоваться для определения направления движения.
+    public Transform cam;
 
-    public GameObject player;
-    // Чувствительность вращения камеры. 
-    // Большее значение означает более быстрое вращение.
-    public float sensitivity = 50f;
+    // Скорости движения и вращения при ходьбе
+    public float walkSpeed;
+    public float walkRotationSpeed;
 
-    // Переменная для хранения изменения позиции мыши с предыдущего кадра.
-    private Vector2 mouseDelta;
-    // Вектор смещения камеры относительно игрока.
-    private Vector3 offcet1;
-    private Vector3 offcet2;
+    // Скорости движения и вращения при беге
+    private bool isRunning; // Флаг, указывающий, бежит ли персонаж
+    public float runSpeed;
+    public float runRotationSpeed;
 
-    public GameObject cam_pos;
-    // Значение ползунка, которое будет влиять на offcet.
-    [Range(0.6f, 2.5f)] // Добавляем атрибут Range
-    public float sliderValue;
+    // Скорости движения и вращения при сидении
+    public bool isSiting; // Флаг, указывающий, сидит ли персонаж
+    public float sitSpeed;
+    public float sitRotationSpeed;
+    public float sitNrunSpeed; // Скорость при сидении и беге
+    public float sitNrunRotationSpeed; // Скорость вращения при сидении и беге
 
-    public float sittingYOffset = 0.75f;
-    public float standingYOffset = 1.5f;
-    private Vector3 targetPosition;
-    private Vector3 velocity = Vector3.zero;
-    public float smoothTime = 0.5f; // Скорость плавного перемещения
+    // Ссылка на аниматор персонажа.
+    private Animator anim;
+    // Вектор движения персонажа.
+    private Vector3 movement;
 
-    // Массив для хранения объектов, ставших прозрачными
-    GameObject[] transparentObjects = new GameObject[10]; // Начальная емкость массива
-    int transparentObjectsCount = 0; // Количество объектов в массиве
+    // Переменные для плавного изменения скорости
+    private float currentSpeed; // Текущая скорость движения
+    private float currentRotationSpeed; // Текущая скорость вращения
+    private float speedChangeRate = 8f; // Скорость изменения скорости (чем больше значение, тем быстрее изменяется скорость)
 
+    // Переменные для коллайдера
+    private CapsuleCollider capsuleCollider;
+    // Переменные для плавной анимации высоты
+    private float currentHeight;
+    private float targetHeight;
+    private float smoothTime = 0.55f; // Время плавного перехода (в секундах)
+    private float velocity = 0f; // Переменная для скорости изменения высоты
+    private Vector3 colliderOffset; // Смещение коллайдера
 
-    void Start()
+    // Справочный словарь для хранения высоты персонажа в каждой анимации
+    private Dictionary<string, float> animationHeights = new Dictionary<string, float>()
     {
-        offcet1 = cam_pos.transform.position - transform.position;
-        offcet2 = transform.position - player.transform.position;
-        sliderValue = 2.3f;
+        // Заполните этот словарь высотами для каждой анимации
+        {"not Sit", 1.85f},
+        {"Sit", 1.48f},
+    };
+
+    private void Start()
+    {
+        anim = GetComponent<Animator>(); // Получаем ссылку на компонент аниматора
+        capsuleCollider = GetComponent<CapsuleCollider>();
+        currentHeight = capsuleCollider.height; // Инициализируем текущую высоту
+        currentSpeed = walkSpeed; // Инициализируем начальную скорость как скорость ходьбы
+        currentRotationSpeed = walkRotationSpeed; // Инициализируем начальную скорость вращения как скорость ходьбы
     }
 
-    void LateUpdate()
+    void Update()
     {
-        // Получаем изменения позиции мыши с момента последнего кадра.
-        mouseDelta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
+        // Получаем направление движения от камеры.
+        Vector3 forward = cam.forward;
+        Vector3 right = cam.right;
 
-        // Вращаем объект вокруг своей вертикальной оси (вправо-влево).
-        transform.Rotate(Vector3.up, mouseDelta.x * sensitivity * Time.deltaTime);
-        // Вращаем объект вокруг своей горизонтальной оси (вверх-вниз).
-        transform.Rotate(Vector3.right, -mouseDelta.y * sensitivity * Time.deltaTime);
+        // Очищаем вертикальную составляющую направления, 
+        // чтобы персонаж не двигался вверх или вниз.
+        forward.y = 0;
+        right.y = 0;
 
-        // Ограничиваем вращение по вертикали, чтобы камера не могла вращаться 
-        if (transform.eulerAngles.x >= 0 && transform.eulerAngles.x <= 60)
+        // Нормализуем векторы направления, чтобы они имели длину 1.
+        forward.Normalize();
+        right.Normalize();
+
+        // Вычисляем вектор движения на основе ввода пользователя.
+        // Input.GetAxis("Vertical") и Input.GetAxis("Horizontal") возвращают значения от -1 до 1, которые 
+        //  определяют направление движения по вертикали и горизонтали.
+        movement = (forward * Input.GetAxis("Vertical") + right * Input.GetAxis("Horizontal")).normalized;
+
+        // Определяем, бежит ли персонаж.
+        isRunning = Input.GetKey(KeyCode.LeftShift);
+
+        // Определяем, сидит ли персонаж.
+        if (Input.GetKeyDown(KeyCode.C)) { isSiting = !isSiting; } // Переключаем состояние сидения при нажатии на клавишу C
+
+        // Плавно изменяем скорость и скорость вращения
+        float targetSpeed = walkSpeed; // Начальная скорость - скорость ходьбы
+        float targetRotationSpeed = walkRotationSpeed; // Начальная скорость вращения - скорость ходьбы
+
+        targetHeight = animationHeights["not Sit"];
+        colliderOffset = new Vector3(0f, currentHeight / 2f);
+
+        if (isRunning && !isSiting) 
         {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 0f, 60f), transform.eulerAngles.y, 0);
+            targetSpeed = runSpeed; // Устанавливаем целевую скорость как скорость бега
+            targetRotationSpeed = runRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при беге
         }
-        else if (transform.eulerAngles.x >= 300 && transform.eulerAngles.x <= 360)
+        else if (!isRunning && isSiting)
         {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 300f, 360f), transform.eulerAngles.y, 0);
+            targetSpeed = sitSpeed; // Устанавливаем целевую скорость как скорость сидения
+            targetRotationSpeed = sitRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+            anim.SetFloat("SitSpeed", 0.5f);
+
+            targetHeight = animationHeights["Sit"];
+            // Вычисляем смещение коллайдера
+            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
         }
-        else
+        else if (isRunning && isSiting)
         {
-            if (transform.eulerAngles.x - 60 < 100)
-            {
-                transform.eulerAngles = new Vector3(60f, transform.eulerAngles.y, 0);
-            }
-            else
-            {
-                transform.eulerAngles = new Vector3(300, transform.eulerAngles.y, 0);
-            }
-        }
+            targetSpeed = sitNrunSpeed; // Устанавливаем целевую скорость как скорость сидения
+            targetRotationSpeed = sitNrunRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+            anim.SetFloat("SitSpeed", 0.75f);
 
-        // Изменяем offcet с помощью значения ползунка
-        Vector3 direction = (cam_pos.transform.position - transform.position).normalized; // Получаем направление
-        offcet1 = direction * sliderValue; // Умножаем направление на значение ползунка
-
-        // Перемещаем камеру в положение, которое находится на расстоянии offcet от игрока.
-        cam_pos.transform.position = transform.position + offcet1;
-        // Получаем целевую позицию в зависимости от состояния сидения
-        targetPosition = player.transform.position + offcet2;
-        targetPosition.y = MS.isSiting ? sittingYOffset : standingYOffset;
-
-        // Плавное перемещение к целевой позиции
-        transform.position = targetPosition;
-
-        // Отрисовываем лучи
-        Vector3 TP = transform.position; // позиция cam_point
-        Vector3 cam_posTP = cam_pos.transform.position; // позиция cam_pos
-
-        // Желтый луч: cam_point -> cam_pos (длина = sliderValue)
-        Debug.DrawLine(TP, cam_posTP, Color.yellow);
-        // Красный луч: cam_pos -> направление от cam_point (длина = initialDistance - sliderValue)
-        Debug.DrawLine(cam_posTP, cam_posTP + direction * (2.3f - sliderValue), Color.red);
-
-        RaycastHit hit;
-
-        // Целевое значение sliderValue
-        float targetSliderValue = sliderValue;
-
-        // Сглаживание перехода между объектами
-        float smoothTransitionSpeed = 12.0f; // Скорость сглаживания
-
-        // Первый луч (желтый): 
-        if (Physics.Raycast(TP, direction, out hit, sliderValue) && hit.collider.gameObject.tag == "obstacle")
-        {
-            // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
-            targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, Vector3.Distance(TP, hit.point)), Time.fixedDeltaTime * smoothTransitionSpeed);
-
-            // Рекурсивно делаем прозрачными все объекты с тегом "obstacle" внутри найденного объекта
-            MakeObstacleTransparentRecursive(hit.collider.gameObject);
-
-            // Добавляем объект в массив transparentObjects, если его там еще нет
-            if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, hit.collider.gameObject))
-            {
-                transparentObjects[transparentObjectsCount] = hit.collider.gameObject;
-                transparentObjectsCount++;
-            }
-        }
-        else
-        {
-            // Если желтый луч ни с чем не пересекается, проверяем красный луч
-            if (Physics.Raycast(cam_posTP, -direction, out hit, 2.3f - sliderValue) && hit.collider.gameObject.tag == "obstacle")
-            {
-                // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
-                targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, 2.3f - Vector3.Distance(cam_posTP, hit.point)), Time.deltaTime * smoothTransitionSpeed);
-
-                // Рекурсивно делаем прозрачными все объекты с тегом "obstacle" внутри найденного объекта
-                MakeObstacleTransparentRecursive(hit.collider.gameObject);
-
-                // Добавляем объект в массив transparentObjects, если его там еще нет
-                if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, hit.collider.gameObject))
-                {
-                    transparentObjects[transparentObjectsCount] = hit.collider.gameObject;
-                    transparentObjectsCount++;
-                }
-            }
-            else
-            {
-                // Если ни один луч ни с чем не пересекается, плавно увеличиваем targetSliderValue до максимального значения
-                targetSliderValue = Mathf.Lerp(targetSliderValue, 2.3f, Time.deltaTime * smoothTransitionSpeed);
-
-                // Возвращаем непрозрачность всем объектам в массиве
-                for (int i = 0; i < transparentObjectsCount; i++)
-                {
-                    if (transparentObjects[i] != null)
-                    {
-                        MakeObstacleOpaque(transparentObjects[i]);
-                    }
-                }
-
-                // Очищаем массив
-                transparentObjectsCount = 0;
-            }
+            targetHeight = animationHeights["Sit"];
+            colliderOffset = forward * 0.2f; // 0.2f - величина смещения
         }
 
-        // Плавно перемещаем sliderValue к целевому значению
-        sliderValue = Mathf.Lerp(sliderValue, targetSliderValue, Time.fixedDeltaTime * 5.0f);
+        // Плавно изменяем высоту коллайдера
+        currentHeight = Mathf.SmoothDamp(currentHeight, targetHeight, ref velocity, smoothTime);
+        capsuleCollider.height = currentHeight;
+        capsuleCollider.center = new Vector3(colliderOffset.x, currentHeight / 2f, colliderOffset.z);
 
-        // Применяем полученное значение sliderValue к позиции cam_pos
-        cam_posTP = TP + direction * sliderValue;
-    }
+        // Используем Lerp для плавного изменения скорости и скорости вращения
+        currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости к целевой скорости
+        currentRotationSpeed = Mathf.Lerp(currentRotationSpeed, targetRotationSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости вращения к целевой скорости вращения
 
-    // Функция для проверки, есть ли объект в массиве
-    private bool ArrayContainsObject(GameObject[] array, int count, GameObject target)
-    {
-        for (int i = 0; i < count; i++)
+        // Движение и вращение персонажа.
+        if (movement != Vector3.zero) // Если персонаж движется
         {
-            if (array[i] == target)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
+            // Поворачиваем персонажа в направлении движения.
+            transform.rotation = Quaternion.Slerp(transform.rotation, Quaternion.LookRotation(movement), Time.deltaTime * currentRotationSpeed); // Вращаем персонажа с текущей скоростью вращения
 
-    // Функция для изменения прозрачности препятствий
-    private void MakeObstacleTransparent(GameObject obstacle)
-    {
-        // Получаем Renderer препятствия
-        Renderer obstacleRenderer = obstacle.GetComponent<Renderer>();
-        if (obstacleRenderer != null)
+            // Перемещаем персонажа в направлении движения.
+            transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, currentSpeed * Time.deltaTime); // Перемещаем персонажа с текущей скоростью
+
+            // Анимируем персонажа.
+            anim.SetBool("isWalking", true); // Анимируем ходьбу
+            anim.SetBool("isRunning", isRunning); // Анимируем бег
+        }
+        else // Если персонаж не движется
         {
-            // Устанавливаем прозрачность
-            Color color = obstacleRenderer.material.color;
-            color.a = 0.0f; // Значение прозрачности (0 - полностью прозрачный, 1 - полностью непрозрачный)
-            obstacleRenderer.material.color = color;
+            // Если персонаж не двигается, то устанавливаем анимацию в состояние покоя.
+            anim.SetBool("isWalking", false); // Останавливаем анимацию ходьбы
+            anim.SetBool("isRunning", false); // Останавливаем анимацию бега
         }
-    }
-
-    // Функция для возвращения препятствий в непрозрачное состояние
-    private void MakeObstacleOpaque(GameObject obstacle)
-    {
-        // Получаем Renderer препятствия
-        Renderer obstacleRenderer = obstacle.GetComponent<Renderer>();
-        if (obstacleRenderer != null)
-        {
-            // Устанавливаем непрозрачность
-            Color color = obstacleRenderer.material.color;
-            color.a = 1.0f; // Значение прозрачности (0 - полностью прозрачный, 1 - полностью непрозрачный)
-            obstacleRenderer.material.color = color;
-        }
-    }
-
-    // Рекурсивная функция для создания прозрачности объектов с тегом "obstacle"
-    void MakeObstacleTransparentRecursive(GameObject obj)
-    {
-        MakeObstacleTransparent(obj);
-
-        // Добавляем объект в массив transparentObjects, если его там еще нет
-        if (!ArrayContainsObject(transparentObjects, transparentObjectsCount, obj))
-        {
-            transparentObjects[transparentObjectsCount] = obj;
-            transparentObjectsCount++;
-        }
-
-        // Проверяем всех дочерних объектов
-        foreach (Transform child in obj.transform)
-        {
-            if (child.gameObject.tag == "obstacle")
-            {
-                MakeObstacleTransparentRecursive(child.gameObject);
-            }
-        }
+        anim.SetBool("isSiting", isSiting); // Анимируем сидение
     }
 }
