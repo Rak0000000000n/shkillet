@@ -5,34 +5,40 @@ using UnityEngine;
 
 public class cam_script : MonoBehaviour
 {
+    [Header("Основные настройки")]
     public move_script MS;
-
     public GameObject player;
-    // Чувствительность вращения камеры. 
-    // Большее значение означает более быстрое вращение.
+    public GameObject cam_pos;
+
+    [Space(12)]
+    [Header("Вращение камеры")]
     public float sensitivity = 50f;
 
-    // Переменная для хранения изменения позиции мыши с предыдущего кадра.
-    private Vector2 mouseDelta;
-    // Вектор смещения камеры относительно игрока.
-    private Vector3 offcet1;
-    private Vector3 offcet2;
-
-    public GameObject cam_pos;
-    // Значение ползунка, которое будет влиять на offcet.
-    [Range(0.6f, 2.5f)] // Добавляем атрибут Range
+    [Space(12)]
+    [Header("Позиционирование камеры")]
+    [Range(0.6f, 2.5f)]
     public float sliderValue;
-
     public float sittingYOffset = 0.75f;
     public float standingYOffset = 1.5f;
-    private Vector3 targetPosition;
-    private Vector3 velocity = Vector3.zero;
     public float smoothTime = 0.5f; // Скорость плавного перемещения
 
-    // Массив для хранения объектов, ставших прозрачными
-    GameObject[] transparentObjects = new GameObject[10]; // Начальная емкость массива
-    int transparentObjectsCount = 0; // Количество объектов в массиве
+    [Space(12)]
+    [Header("Прозрачность препятствий")]
+    GameObject[] transparentObjects = new GameObject[10];
+    int transparentObjectsCount = 0;
 
+    // Переменные для вращения
+    private Vector2 mouseDelta;
+
+    // Переменные для позиционирования
+    private Vector3 offcet1;
+    private Vector3 offcet2;
+    private Vector3 targetPosition;
+    private Vector3 velocity = Vector3.zero;
+
+    // Переменные для обработки прозрачности
+    private float targetSliderValue;
+    private float smoothTransitionSpeed = 12.0f; // Скорость сглаживания
 
     void Start()
     {
@@ -43,51 +49,56 @@ public class cam_script : MonoBehaviour
 
     void LateUpdate()
     {
+        HandleCameraRotation();
+        UpdateCameraPosition();
+        CheckForObstacles();
+        UpdateSliderValue();
+    }
+
+    // Вращение камеры
+    private void HandleCameraRotation()
+    {
         // Получаем изменения позиции мыши с момента последнего кадра.
         mouseDelta = new Vector2(Input.GetAxis("Mouse X"), Input.GetAxis("Mouse Y"));
 
         // Вращаем объект вокруг своей вертикальной оси (вправо-влево).
         transform.Rotate(Vector3.up, mouseDelta.x * sensitivity * Time.deltaTime);
+
         // Вращаем объект вокруг своей горизонтальной оси (вверх-вниз).
         transform.Rotate(Vector3.right, -mouseDelta.y * sensitivity * Time.deltaTime);
 
-        // Ограничиваем вращение по вертикали, чтобы камера не могла вращаться 
-        if (transform.eulerAngles.x >= 0 && transform.eulerAngles.x <= 60)
-        {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 0f, 60f), transform.eulerAngles.y, 0);
-        }
-        else if (transform.eulerAngles.x >= 300 && transform.eulerAngles.x <= 360)
-        {
-            transform.eulerAngles = new Vector3(Mathf.Clamp(transform.eulerAngles.x, 300f, 360f), transform.eulerAngles.y, 0);
-        }
-        else
-        {
-            if (transform.eulerAngles.x - 60 < 100)
-            {
-                transform.eulerAngles = new Vector3(60f, transform.eulerAngles.y, 0);
-            }
-            else
-            {
-                transform.eulerAngles = new Vector3(300, transform.eulerAngles.y, 0);
-            }
-        }
+        // Ограничиваем вращение по вертикали 
+        // (реализовать ограничения более читаемым образом, например, с помощью метода ClampAngle).
+        transform.eulerAngles = new Vector3(
+            Mathf.Clamp(transform.eulerAngles.x, 0f, 60f),
+            transform.eulerAngles.y,
+            0);
+    }
 
+    //  Рассчитывание позиции камеры 
+    private void UpdateCameraPosition()
+    {
         // Изменяем offcet с помощью значения ползунка
-        Vector3 direction = (cam_pos.transform.position - transform.position).normalized; // Получаем направление
-        offcet1 = direction * sliderValue; // Умножаем направление на значение ползунка
+        Vector3 direction = (cam_pos.transform.position - transform.position).normalized;
+        offcet1 = direction * sliderValue;
 
         // Перемещаем камеру в положение, которое находится на расстоянии offcet от игрока.
         cam_pos.transform.position = transform.position + offcet1;
+
         // Получаем целевую позицию в зависимости от состояния сидения
         targetPosition = player.transform.position + offcet2;
         targetPosition.y = MS.isSiting ? sittingYOffset : standingYOffset;
 
-        // Плавное перемещение к целевой позиции
+        // Плавное перемещение к целевой позиции (реализовать с помощью SmoothDamp)
         transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, smoothTime);
+    }
 
-        // Отрисовываем лучи
+    // Проверка коллизий лучей 
+    private void CheckForObstacles()
+    {
         Vector3 TP = transform.position; // позиция cam_point
         Vector3 cam_posTP = cam_pos.transform.position; // позиция cam_pos
+        Vector3 direction = (cam_pos.transform.position - transform.position).normalized;
 
         // Желтый луч: cam_point -> cam_pos (длина = sliderValue)
         Debug.DrawLine(TP, cam_posTP, Color.yellow);
@@ -96,14 +107,8 @@ public class cam_script : MonoBehaviour
 
         RaycastHit hit;
 
-        // Целевое значение sliderValue
-        float targetSliderValue = sliderValue;
-
-        // Сглаживание перехода между объектами
-        float smoothTransitionSpeed = 12.0f; // Скорость сглаживания
-
         // Первый луч (желтый): 
-        if (Physics.Raycast(TP, direction, out hit, sliderValue) && hit.collider.gameObject.tag == "obstacle")
+        if (CheckRaycastHit(TP, direction, sliderValue, out hit) && hit.collider.gameObject.tag == "obstacle")
         {
             // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
             targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, Vector3.Distance(TP, hit.point)), Time.fixedDeltaTime * smoothTransitionSpeed);
@@ -121,7 +126,7 @@ public class cam_script : MonoBehaviour
         else
         {
             // Если желтый луч ни с чем не пересекается, проверяем красный луч
-            if (Physics.Raycast(cam_posTP, -direction, out hit, 2.3f - sliderValue) && hit.collider.gameObject.tag == "obstacle")
+            if (CheckRaycastHit(cam_posTP, -direction, 2.3f - sliderValue, out hit) && hit.collider.gameObject.tag == "obstacle")
             {
                 // Плавно уменьшаем targetSliderValue до расстояния до объекта, но не меньше минимального значения
                 targetSliderValue = Mathf.Lerp(targetSliderValue, Mathf.Max(0.6f, 2.3f - Vector3.Distance(cam_posTP, hit.point)), Time.deltaTime * smoothTransitionSpeed);
@@ -154,15 +159,25 @@ public class cam_script : MonoBehaviour
                 transparentObjectsCount = 0;
             }
         }
+    }
 
+    //  Обновление значения sliderValue 
+    private void UpdateSliderValue()
+    {
         // Плавно перемещаем sliderValue к целевому значению
         sliderValue = Mathf.Lerp(sliderValue, targetSliderValue, Time.fixedDeltaTime * 5.0f);
 
         // Применяем полученное значение sliderValue к позиции cam_pos
-        cam_posTP = TP + direction * sliderValue;
+        cam_pos.transform.position = transform.position + (cam_pos.transform.position - transform.position).normalized * sliderValue;
     }
 
-    // Функция для проверки, есть ли объект в массиве
+    // Метод для проверки коллизий лучей (применить к обоим лучам)
+    private bool CheckRaycastHit(Vector3 startPos, Vector3 direction, float distance, out RaycastHit hit)
+    {
+        return Physics.Raycast(startPos, direction, out hit, distance);
+    }
+
+    // Функция для проверки, есть ли объект в массиве 
     private bool ArrayContainsObject(GameObject[] array, int count, GameObject target)
     {
         for (int i = 0; i < count; i++)
@@ -175,7 +190,7 @@ public class cam_script : MonoBehaviour
         return false;
     }
 
-    // Функция для изменения прозрачности препятствий
+    // Функция для изменения прозрачности препятствий 
     private void MakeObstacleTransparent(GameObject obstacle)
     {
         // Получаем Renderer препятствия
@@ -189,7 +204,7 @@ public class cam_script : MonoBehaviour
         }
     }
 
-    // Функция для возвращения препятствий в непрозрачное состояние
+    // Функция для возвращения препятствий в непрозрачное состояние 
     private void MakeObstacleOpaque(GameObject obstacle)
     {
         // Получаем Renderer препятствия
@@ -203,7 +218,7 @@ public class cam_script : MonoBehaviour
         }
     }
 
-    // Рекурсивная функция для создания прозрачности объектов с тегом "obstacle"
+    // Рекурсивная функция для создания прозрачности объектов с тегом "obstacle" 
     void MakeObstacleTransparentRecursive(GameObject obj)
     {
         MakeObstacleTransparent(obj);
