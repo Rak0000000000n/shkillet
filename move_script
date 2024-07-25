@@ -14,6 +14,7 @@ public class move_script : MonoBehaviour
     public float runSpeed;
     public float sitSpeed;
     public float sitNrunSpeed;
+    public float jumpSpeed;
 
     [Space(12)]
     [Header("Скорости вращения")]
@@ -21,6 +22,7 @@ public class move_script : MonoBehaviour
     public float runRotationSpeed;
     public float sitRotationSpeed;
     public float sitNrunRotationSpeed;
+    public float jumpRotationSpeed;
 
     [Space(12)]
     [Header("Сидение")]
@@ -48,7 +50,6 @@ public class move_script : MonoBehaviour
     // Справочный словарь для хранения высоты персонажа в каждой анимации
     private Dictionary<string, float> animationHeights = new Dictionary<string, float>()
     {
-        // Заполните этот словарь высотами для каждой анимации
         {"not Sit", 1.85f},
         {"Sit", 1.48f},
     };
@@ -62,12 +63,21 @@ public class move_script : MonoBehaviour
     public float timeInAirThreshold = 0.2f;
     // Время, которое персонаж провел в воздухе
     private float timeInAir = 0f;
+    // Новая переменная для сохранения скорости движения при прыжке
+    private Vector3 jumpVelocity;
 
     // Переменные для движения
     private Vector3 movement;
     private bool isRunning;
     private float currentSpeed; // Текущая скорость движения
     private float currentRotationSpeed; // Текущая скорость вращения
+
+    // Флаги для состояния движения
+    private bool isJumping = false;
+
+    // Добавляем targetSpeed и targetRotationSpeed как члены класса
+    private float targetSpeed;
+    private float targetRotationSpeed;
 
     private void Start()
     {
@@ -81,13 +91,11 @@ public class move_script : MonoBehaviour
     void Update()
     {
         HandleInput();
-        UpdateMovement();
+        UpdateMovementState();
         UpdateRotation();
         UpdateAnimation();
         UpdateColliderHeight();
-        // Вызываем метод обработки прыжка
         HandleJump();
-        // Вызываем метод обновления времени в воздухе
         UpdateTimeInAir();
         g = IsGrounded();
     }
@@ -118,43 +126,74 @@ public class move_script : MonoBehaviour
         if (Input.GetKeyDown(KeyCode.C)) { isSiting = !isSiting; } // Переключаем состояние сидения при нажатии на клавишу C
     }
 
-    // Обновление движения
-    private void UpdateMovement()
+    // Обновление состояния движения
+    private void UpdateMovementState()
     {
         // Плавно изменяем скорость и скорость вращения
-        float targetSpeed = walkSpeed; // Начальная скорость - скорость ходьбы
-        float targetRotationSpeed = walkRotationSpeed; // Начальная скорость вращения - скорость ходьбы
+        targetSpeed = walkSpeed; // Начальная скорость - скорость ходьбы
+        targetRotationSpeed = walkRotationSpeed; // Начальная скорость вращения - скорость ходьбы
 
+        // Устанавливаем начальные значения для высоты и смещения
         targetHeight = animationHeights["not Sit"];
         colliderOffset = new Vector3(0f, currentHeight / 2f);
 
-        if (isRunning && !isSiting)
+        // Проверяем состояние движения и обновляем параметры
+        if (isJumping)
         {
-            targetSpeed = runSpeed; // Устанавливаем целевую скорость как скорость бега
-            targetRotationSpeed = runRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при беге
+            SetMovementStateJumping();
+        }
+        else if (isRunning && !isSiting)
+        {
+            SetMovementStateRunning();
         }
         else if (!isRunning && isSiting)
         {
-            targetSpeed = sitSpeed; // Устанавливаем целевую скорость как скорость сидения
-            targetRotationSpeed = sitRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
-            anim.SetFloat("SitSpeed", 0.5f);
-
-            targetHeight = animationHeights["Sit"];
-            colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
+            SetMovementStateSitting();
         }
         else if (isRunning && isSiting)
         {
-            targetSpeed = sitNrunSpeed; // Устанавливаем целевую скорость как скорость сидения
-            targetRotationSpeed = sitNrunRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
-            anim.SetFloat("SitSpeed", 0.75f);
-
-            targetHeight = animationHeights["Sit"];
-            colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
+            SetMovementStateSittingAndRunning();
         }
 
         // Используем Lerp для плавного изменения скорости и скорости вращения
         currentSpeed = Mathf.Lerp(currentSpeed, targetSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости к целевой скорости
         currentRotationSpeed = Mathf.Lerp(currentRotationSpeed, targetRotationSpeed, Time.deltaTime * speedChangeRate); // Плавное изменение текущей скорости вращения к целевой скорости вращения
+    }
+
+    private void SetMovementStateJumping()
+    {
+        // Скорость и вращение при прыжке
+        targetSpeed = jumpSpeed;
+        targetRotationSpeed = jumpRotationSpeed; // Скорость вращения в прыжке (уже есть)
+    }
+
+    // Установка параметров для бега
+    private void SetMovementStateRunning()
+    {
+        targetSpeed = runSpeed; // Устанавливаем целевую скорость как скорость бега
+        targetRotationSpeed = runRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при беге
+    }
+
+    // Установка параметров для сидения
+    private void SetMovementStateSitting()
+    {
+        targetSpeed = sitSpeed; // Устанавливаем целевую скорость как скорость сидения
+        targetRotationSpeed = sitRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+        anim.SetFloat("SitSpeed", 0.5f);
+
+        targetHeight = animationHeights["Sit"];
+        colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
+    }
+
+    // Установка параметров для сидения с бегом
+    private void SetMovementStateSittingAndRunning()
+    {
+        targetSpeed = sitNrunSpeed; // Устанавливаем целевую скорость как скорость сидения
+        targetRotationSpeed = sitNrunRotationSpeed; // Устанавливаем целевую скорость вращения как скорость вращения при сидении
+        anim.SetFloat("SitSpeed", 0.75f);
+
+        targetHeight = animationHeights["Sit"];
+        colliderOffset = new Vector3(0f, currentHeight / 2f, 0.2f);
     }
 
     // Обновление поворота
@@ -178,14 +217,16 @@ public class move_script : MonoBehaviour
             // Анимируем персонажа.
             anim.SetBool("isWalking", true); // Анимируем ходьбу
             anim.SetBool("isRunning", isRunning); // Анимируем бег
+            anim.SetBool("isSiting", isSiting); // Анимируем сидение
         }
         else // Если персонаж не движется
         {
             // Если персонаж не двигается, то устанавливаем анимацию в состояние покоя.
             anim.SetBool("isWalking", false); // Останавливаем анимацию ходьбы
             anim.SetBool("isRunning", false); // Останавливаем анимацию бега
+            anim.SetBool("isSiting", isSiting); // Останавливаем анимацию сидения
         }
-        anim.SetBool("isSiting", isSiting); // Анимируем сидение
+        anim.SetBool("isJumping", isJumping); // Анимируем прыжок
     }
 
     // Обновление высоты коллайдера
@@ -198,27 +239,35 @@ public class move_script : MonoBehaviour
     }
 
     // Метод для обработки прыжка
-    // Метод для обработки прыжка
     private void HandleJump()
     {
         // Проверка нажатия пробела
         if (Input.GetKeyDown(KeyCode.Space) && IsGrounded())
         {
             // Активируем флажок прыжка в аниматоре
-            GetComponent<Animator>().SetBool("isJumping", true);
+            isJumping = true;
 
-            // Добавляем импульс вверх
-            GetComponent<Rigidbody>().AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            // Сохраняем текущую скорость
+            jumpVelocity = movement * currentSpeed;
+
+            // Добавляем импульс вверх и вперед
+            GetComponent<Rigidbody>().AddForce(Vector3.up * jumpForce + jumpVelocity, ForceMode.Impulse);
+
+            // Временно отключаем считывание клавиш движения
+            movement = Vector3.zero;
         }
 
         // Деактивация флага прыжка при касании земли
-        if (IsGrounded() && GetComponent<Animator>().GetBool("isJumping"))
+        if (IsGrounded() && isJumping)
         {
             // Проверяем, достаточно ли времени персонаж провел в воздухе
             if (timeInAir >= timeInAirThreshold)
             {
-                GetComponent<Animator>().SetBool("isJumping", false);
+                isJumping = false;
             }
+
+            // Возобновляем считывание ввода после приземления
+            movement = (cam.forward * Input.GetAxis("Vertical") + cam.right * Input.GetAxis("Horizontal")).normalized;
         }
     }
 
