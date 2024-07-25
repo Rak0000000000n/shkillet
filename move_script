@@ -53,6 +53,16 @@ public class move_script : MonoBehaviour
         {"Sit", 1.48f},
     };
 
+    [Space(12)]
+    [Header("Прыжок")]
+    public float jumpForce; // Сила прыжка
+    public bool g;
+    // Время, которое персонаж должен провести в воздухе, 
+    // чтобы деактивировать флажок isJumping
+    public float timeInAirThreshold = 0.2f;
+    // Время, которое персонаж провел в воздухе
+    private float timeInAir = 0f;
+
     // Переменные для движения
     private Vector3 movement;
     private bool isRunning;
@@ -75,6 +85,11 @@ public class move_script : MonoBehaviour
         UpdateRotation();
         UpdateAnimation();
         UpdateColliderHeight();
+        // Вызываем метод обработки прыжка
+        HandleJump();
+        // Вызываем метод обновления времени в воздухе
+        UpdateTimeInAir();
+        g = IsGrounded();
     }
 
     // Обработка ввода
@@ -180,5 +195,63 @@ public class move_script : MonoBehaviour
         currentHeight = Mathf.SmoothDamp(currentHeight, targetHeight, ref velocity, smoothTime);
         capsuleCollider.height = currentHeight;
         capsuleCollider.center = new Vector3(colliderOffset.x, currentHeight / 2f, colliderOffset.z);
+    }
+
+    // Метод для обработки прыжка
+    // Метод для обработки прыжка
+    private void HandleJump()
+    {
+        // Проверка нажатия пробела
+        if (Input.GetKeyDown(KeyCode.Space) && IsGrounded())
+        {
+            // Активируем флажок прыжка в аниматоре
+            GetComponent<Animator>().SetBool("isJumping", true);
+
+            // Добавляем импульс вверх
+            GetComponent<Rigidbody>().AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+        }
+
+        // Деактивация флага прыжка при касании земли
+        if (IsGrounded() && GetComponent<Animator>().GetBool("isJumping"))
+        {
+            // Проверяем, достаточно ли времени персонаж провел в воздухе
+            if (timeInAir >= timeInAirThreshold)
+            {
+                GetComponent<Animator>().SetBool("isJumping", false);
+            }
+        }
+    }
+
+    // Метод для обновления времени в воздухе
+    private void UpdateTimeInAir()
+    {
+        if (!IsGrounded())
+        {
+            timeInAir += Time.deltaTime;
+        }
+        else
+        {
+            timeInAir = 0f; // Сбрасываем время в воздухе при касании земли
+        }
+    }
+
+    // Метод для проверки, находится ли персонаж на земле
+    private bool IsGrounded()
+    {
+        // Направление луча (прямо вниз)
+        Vector3 rayDirection = Vector3.down;
+
+        // Точка начала луча (немного выше центра персонажа)
+        Vector3 rayOrigin = transform.position + Vector3.up * 0.1f;
+
+        // Проверяем столкновение с землей
+        RaycastHit hit;
+        if (Physics.Raycast(rayOrigin, rayDirection, out hit, 0.3f))
+        {
+            // Debug.Log("Персонаж на земле!");
+            return true;
+        }
+        // Debug.Log("Персонаж в воздухе!");
+        return false;
     }
 }
