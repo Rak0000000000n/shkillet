@@ -1,0 +1,59 @@
+using System.Collections;
+using System.Collections.Generic;
+using UnityEngine;
+
+public class move : MonoBehaviour
+{
+    // Настройки движения
+    [Header("Движение")]
+    public float speed = 5f;
+    public float rotationSpeed = 5f;
+
+    // Ссылки
+    [Space(12)]
+    [Header("Камера")]
+    public Transform cameraTransform;
+
+    private Rigidbody rb;
+    private Vector3 movement; // Переменная для хранения вектора движения
+
+    void Start()
+    {
+        // Получение компонента Rigidbody
+        rb = GetComponent<Rigidbody>();
+    }
+
+    void Update()
+    {
+        GetInput();
+        Move();
+        Rotate();
+    }
+
+    private void GetInput()
+    {
+        float horizontalInput = Input.GetAxis("Horizontal");
+        float verticalInput = Input.GetAxis("Vertical");
+
+        // Создание вектора движения
+        movement = new Vector3(horizontalInput, 0, verticalInput); // Изменение: присваивание значения movement
+    }
+
+    private void Move()
+    {
+        // Перемещение персонажа
+        rb.velocity = movement * speed;
+    }
+
+    private void Rotate()
+    {
+        if (movement != Vector3.zero)
+        {
+            // Поворот персонажа в направлении движения
+            Vector3 targetDirection = cameraTransform.forward * movement.z + cameraTransform.right * movement.x;
+            targetDirection.y = 0; // Игнорируем вертикальное движение
+            Quaternion targetRotation = Quaternion.LookRotation(targetDirection);
+            transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        }
+    }
+}
