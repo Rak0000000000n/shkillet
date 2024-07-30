@@ -4,23 +4,42 @@ using UnityEngine;
 
 public class move : MonoBehaviour
 {
-    // Настройки движения
     [Header("Движение")]
     public float speed = 5f;
     public float rotationSpeed = 5f;
 
-    // Ссылки
     [Space(12)]
+    [Header("Прыжок")]
+    public float jumpForce = 5f;
+    public float jumpDelay = 0.2f; // Задержка деактивации isJumping
+
+    [Space(12)]
+    // Камера
     [Header("Камера")]
     public Transform cameraTransform;
 
+    // Компоненты
     private Rigidbody rb;
+    private Animator anim;
     private Vector3 movement; // Переменная для хранения вектора движения
+    private float jumpStartTime = 0; // Время начала прыжка
+
+    // Флаги анимации
+    private bool isJumping;
+    private bool isFalling;
+    private bool isOnTheGround;
+
+    // Маска слоя, исключающая игрока
+    public LayerMask isntPlayer;
 
     void Start()
     {
-        // Получение компонента Rigidbody
+        // Получение компонентов
+        anim = GetComponent<Animator>();
         rb = GetComponent<Rigidbody>();
+
+        // Изначально персонаж на земле
+        isOnTheGround = true;
     }
 
     void Update()
@@ -28,6 +47,9 @@ public class move : MonoBehaviour
         GetInput();
         Move();
         Rotate();
+        UpdateAnimator();
+        CheckGround();
+        HandleJump();
     }
 
     private void GetInput()
@@ -36,13 +58,20 @@ public class move : MonoBehaviour
         float verticalInput = Input.GetAxis("Vertical");
 
         // Создание вектора движения
-        movement = new Vector3(horizontalInput, 0, verticalInput); // Изменение: присваивание значения movement
+        movement = new Vector3(horizontalInput, 0, verticalInput);
+
+        // Обработка прыжка по нажатию пробела
+        if (Input.GetKeyDown(KeyCode.Space) && isOnTheGround)
+        {
+            Jump();
+        }
     }
 
     private void Move()
     {
-        // Перемещение персонажа
-        rb.velocity = movement * speed;
+        // Перемещаем персонажа в направлении движения.
+        transform.position = Vector3.MoveTowards(transform.position, transform.position + movement, speed * Time.deltaTime); // Перемещаем персонажа с текущей скоростью
+
     }
 
     private void Rotate()
@@ -51,9 +80,69 @@ public class move : MonoBehaviour
         {
             // Поворот персонажа в направлении движения
             Vector3 targetDirection = cameraTransform.forward * movement.z + cameraTransform.right * movement.x;
-            targetDirection.y = 0; // Игнорируем вертикальное движение
+            targetDirection.y = 0;
             Quaternion targetRotation = Quaternion.LookRotation(targetDirection);
             transform.rotation = Quaternion.Slerp(transform.rotation, targetRotation, rotationSpeed * Time.deltaTime);
+        }
+    }
+
+    private void UpdateAnimator()
+    {
+        // Устанавливаем значение "isMoving" в аниматоре
+        anim.SetBool("isMoving", movement != Vector3.zero);
+        anim.SetBool("isJumping", isJumping);
+        anim.SetBool("isFalling", isFalling);
+        anim.SetBool("OnTheGround", isOnTheGround);
+    }
+
+    private void CheckGround()
+    {
+        float RayLenght = 1.5f;
+        float underground = 0.2f;
+        Vector3 origin = transform.position + new Vector3(0, RayLenght, 0);
+        
+
+        // Проверка, касается ли персонаж земли
+        if (Physics.Raycast(origin, Vector3.down, RayLenght + underground, isntPlayer))
+        {
+            isOnTheGround = true;
+            isFalling = false;
+        }
+        else
+        {
+            isOnTheGround = false;
+            isFalling = rb.velocity.y < 0; // Проверка, падает ли персонаж
+        }
+
+        // Отрисовка луча для отладки
+        Debug.DrawRay(origin, Vector3.down * (RayLenght + underground), Color.yellow);
+    }
+
+    private void Jump()
+    {
+        if (isOnTheGround)
+        {
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            isJumping = true;
+            isOnTheGround = false;
+        }
+    }
+
+    private void HandleJump()
+    {
+        if (isJumping)
+        {
+            // Задержка деактивации isJumping
+            if (Time.time > jumpDelay + jumpStartTime)
+            {
+                isJumping = false;
+            }
+        }
+
+        // Запоминаем время начала прыжка
+        if (isJumping && jumpStartTime == 0)
+        {
+            jumpStartTime = Time.time;
         }
     }
 }
